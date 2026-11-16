@@ -2476,6 +2476,14 @@ NRI_INLINE void CommandBufferD3D12::CopyBuffer(Buffer& dstBuffer, uint64_t dstOf
     GetGraphicsCommandList()->CopyBufferRegion((BufferD3D12&)dstBuffer, dstOffset, (BufferD3D12&)srcBuffer, srcOffset, size);
 }
 
+// Explicit NRI regions use logical texel extents. D3D12 copy boxes/footprints use complete blocks,
+// including tail mips smaller than a block, just like TextureD3D12::GetSize for WHOLE_SIZE.
+static inline void AlignTextureCopyExtent(Format format, uint32_t& width, uint32_t& height) {
+    const FormatProps& props = GetFormatProps(format);
+    width = (width + props.blockWidth - 1) / props.blockWidth * props.blockWidth;
+    height = (height + props.blockHeight - 1) / props.blockHeight * props.blockHeight;
+}
+
 NRI_INLINE void CommandBufferD3D12::CopyTexture(Texture& dstTexture, const TextureRegionDesc* dstRegion, const Texture& srcTexture, const TextureRegionDesc* srcRegion) {
     const TextureD3D12& dst = (TextureD3D12&)dstTexture;
     const TextureD3D12& src = (TextureD3D12&)srcTexture;
@@ -2501,6 +2509,7 @@ NRI_INLINE void CommandBufferD3D12::CopyTexture(Texture& dstTexture, const Textu
         uint32_t w = srcRegion->width == WHOLE_SIZE ? src.GetSize(0, srcRegion->mipOffset) : srcRegion->width;
         uint32_t h = srcRegion->height == WHOLE_SIZE ? src.GetSize(1, srcRegion->mipOffset) : srcRegion->height;
         uint32_t d = srcRegion->depth == WHOLE_SIZE ? src.GetSize(2, srcRegion->mipOffset) : srcRegion->depth;
+        AlignTextureCopyExtent(srcDesc.format, w, h);
 
         D3D12_BOX srcBox = {
             srcRegion->x,
@@ -2583,11 +2592,12 @@ NRI_INLINE void CommandBufferD3D12::UploadBufferToTexture(Texture& dstTexture, c
     dstTextureCopyLocation.SubresourceIndex = GetSubresourceIndex(dstRegion.layerOffset, dstDesc.layerNum, dstRegion.mipOffset, dstDesc.mipNum, dstRegion.planes);
 
     const uint32_t planeDivisor = GetPlaneDivisor(dstDesc.format, dstRegion.planes);
-    const uint32_t size[3] = {
+    uint32_t size[3] = {
         (dstRegion.width == WHOLE_SIZE ? dst.GetSize(0, dstRegion.mipOffset) : dstRegion.width) / planeDivisor,
         (dstRegion.height == WHOLE_SIZE ? dst.GetSize(1, dstRegion.mipOffset) : dstRegion.height) / planeDivisor,
         dstRegion.depth == WHOLE_SIZE ? dst.GetSize(2, dstRegion.mipOffset) : dstRegion.depth,
     };
+    AlignTextureCopyExtent(dstDesc.format, size[0], size[1]);
     const uint32_t x = dstRegion.x / planeDivisor;
     const uint32_t y = dstRegion.y / planeDivisor;
 
@@ -2615,6 +2625,7 @@ NRI_INLINE void CommandBufferD3D12::ReadbackTextureToBuffer(Buffer& dstBuffer, c
     uint32_t w = (srcRegion.width == WHOLE_SIZE ? src.GetSize(0, srcRegion.mipOffset) : srcRegion.width) / planeDivisor;
     uint32_t h = (srcRegion.height == WHOLE_SIZE ? src.GetSize(1, srcRegion.mipOffset) : srcRegion.height) / planeDivisor;
     uint32_t d = srcRegion.depth == WHOLE_SIZE ? src.GetSize(2, srcRegion.mipOffset) : srcRegion.depth;
+    AlignTextureCopyExtent(srcDesc.format, w, h);
     const uint32_t x = srcRegion.x / planeDivisor;
     const uint32_t y = srcRegion.y / planeDivisor;
 
