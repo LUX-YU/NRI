@@ -36,6 +36,7 @@ struct CommandAllocatorD3D12 final : public DebugNameBase {
 
     Result CreateCommandBuffer(CommandBuffer*& commandBuffer);
     void Reset();
+    Result ResetChecked();
 
 private:
     DeviceD3D12& m_Device;

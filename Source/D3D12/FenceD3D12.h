@@ -12,6 +12,8 @@ struct FenceD3D12 final : public DebugNameBase {
     inline ~FenceD3D12() {
         if (m_Event != 0 && m_Event != INVALID_HANDLE_VALUE)
             CloseHandle(m_Event);
+        if (m_CheckedEvent)
+            CloseHandle(m_CheckedEvent);
     }
 
     inline DeviceD3D12& GetDevice() const {
@@ -38,11 +40,16 @@ struct FenceD3D12 final : public DebugNameBase {
     void QueueSignal(QueueD3D12& queue, uint64_t value);
     void QueueWait(QueueD3D12& queue, uint64_t value);
     Result Wait(uint64_t value);
+    Result GetValueChecked(uint64_t& value) const;
+    Result WaitChecked(uint64_t value, uint64_t timeoutNs, bool& ready);
 
 private:
     DeviceD3D12& m_Device;
     ComPtr<ID3D12Fence> m_Fence;
     HANDLE m_Event = 0;
+    HANDLE m_CheckedEvent = 0;
+    uint64_t m_CheckedValue = 0;
+    Lock m_CheckedLock;
 };
 
 } // namespace nri

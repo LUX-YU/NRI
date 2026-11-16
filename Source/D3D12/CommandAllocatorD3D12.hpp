@@ -20,3 +20,8 @@ NRI_INLINE void CommandAllocatorD3D12::Reset() {
 
     m_CommandAllocator->Reset();
 }
+
+NRI_INLINE Result CommandAllocatorD3D12::ResetChecked() {
+    ExclusiveScope lock(m_Lock);
+    return GetResultFromHRESULT(m_CommandAllocator->Reset());
+}

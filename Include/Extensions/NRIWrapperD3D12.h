@@ -102,6 +102,10 @@ NriStruct(WrapperD3D12Interface) {
     Nri(Result) (NRI_CALL *CreateFenceD3D12)                    (NriRef(Device) device, const NriRef(FenceD3D12Desc) fenceD3D12Desc, NriOut NriRef(Fence*) fence);
     Nri(Result) (NRI_CALL *CreateAccelerationStructureD3D12)    (NriRef(Device) device, const NriRef(AccelerationStructureD3D12Desc) accelerationStructureD3D12Desc, NriOut NriRef(AccelerationStructure*) accelerationStructure);
     // TODO-VIDEO: add CreateVideoSession
+    // Checked host operations used by Lux. Device removal is never reported as completed work.
+    Nri(Result) (NRI_CALL *GetFenceValueCheckedD3D12) (NriRef(Fence) fence, NriOut NonNriRef(uint64_t) value);
+    Nri(Result) (NRI_CALL *WaitFenceCheckedD3D12) (NriRef(Fence) fence, uint64_t value, uint64_t timeoutNs, NriOut NonNriRef(bool) ready);
+    Nri(Result) (NRI_CALL *ResetCommandAllocatorCheckedD3D12) (NriRef(CommandAllocator) allocator);
 };
 
 NRI_API Nri(Result) NRI_CALL nriCreateDeviceFromD3D12Device(const NriRef(DeviceCreationD3D12Desc) deviceDesc, NriOut NriRef(Device*) device);

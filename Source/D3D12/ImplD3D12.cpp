@@ -1419,7 +1419,22 @@ static Result NRI_CALL CreateAccelerationStructureD3D12(Device& device, const Ac
     return ((DeviceD3D12&)device).CreateImplementation<AccelerationStructureD3D12>(accelerationStructure, accelerationStructureD3D12Desc);
 }
 
+static Result NRI_CALL GetFenceValueCheckedD3D12(Fence& fence, uint64_t& value) {
+    return ((FenceD3D12&)fence).GetValueChecked(value);
+}
+
+static Result NRI_CALL WaitFenceCheckedD3D12(Fence& fence, uint64_t value, uint64_t timeoutNs, bool& ready) {
+    return ((FenceD3D12&)fence).WaitChecked(value, timeoutNs, ready);
+}
+
+static Result NRI_CALL ResetCommandAllocatorCheckedD3D12(CommandAllocator& allocator) {
+    return ((CommandAllocatorD3D12&)allocator).ResetChecked();
+}
+
 Result DeviceD3D12::FillFunctionTable(WrapperD3D12Interface& table) const {
+    table.GetFenceValueCheckedD3D12 = ::GetFenceValueCheckedD3D12;
+    table.WaitFenceCheckedD3D12 = ::WaitFenceCheckedD3D12;
+    table.ResetCommandAllocatorCheckedD3D12 = ::ResetCommandAllocatorCheckedD3D12;
     table.CreateCommandBufferD3D12 = ::CreateCommandBufferD3D12;
     table.CreateDescriptorPoolD3D12 = ::CreateDescriptorPoolD3D12;
     table.CreateBufferD3D12 = ::CreateBufferD3D12;

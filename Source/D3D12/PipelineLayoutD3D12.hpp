@@ -162,8 +162,8 @@ Result PipelineLayoutD3D12::Create(const PipelineLayoutDesc& pipelineLayoutDescI
             descriptorRange = {};
             descriptorRange.RangeType = rangeType;
             descriptorRange.NumDescriptors = descriptorRangeDesc.descriptorNum;
-            descriptorRange.BaseShaderRegister = descriptorRangeDesc.baseRegisterIndex;
-            descriptorRange.RegisterSpace = descriptorSetDesc.registerSpace;
+            descriptorRange.BaseShaderRegister = descriptorRangeDesc.d3dRegisterSpacePlusOne ? descriptorRangeDesc.d3dRegisterIndex : descriptorRangeDesc.baseRegisterIndex;
+            descriptorRange.RegisterSpace = descriptorRangeDesc.d3dRegisterSpacePlusOne ? descriptorRangeDesc.d3dRegisterSpacePlusOne - 1 : descriptorSetDesc.registerSpace;
             descriptorRange.Flags = GetDescriptorRangeFlags(descriptorRangeDesc);
             descriptorRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 

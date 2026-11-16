@@ -2525,11 +2525,32 @@ static Result NRI_CALL CreateAccelerationStructureD3D12(Device& device, const Ac
 
 #endif
 
+#if NRI_ENABLE_D3D12_SUPPORT
+static Result NRI_CALL GetFenceValueCheckedD3D12(Fence& fence, uint64_t& value) {
+    auto& object = (FenceVal&)fence;
+    return object.GetWrapperD3D12InterfaceImpl().GetFenceValueCheckedD3D12(*object.GetImpl(), value);
+}
+
+static Result NRI_CALL WaitFenceCheckedD3D12(Fence& fence, uint64_t value, uint64_t timeoutNs, bool& ready) {
+    auto& object = (FenceVal&)fence;
+    return object.GetWrapperD3D12InterfaceImpl().WaitFenceCheckedD3D12(*object.GetImpl(), value, timeoutNs, ready);
+}
+
+static Result NRI_CALL ResetCommandAllocatorCheckedD3D12(CommandAllocator& allocator) {
+    auto& object = (CommandAllocatorVal&)allocator;
+    return object.GetWrapperD3D12InterfaceImpl().ResetCommandAllocatorCheckedD3D12(*object.GetImpl());
+}
+
+#endif
+
 Result DeviceVal::FillFunctionTable(WrapperD3D12Interface& table) const {
 #if NRI_ENABLE_D3D12_SUPPORT
     if (!m_IsExtSupported.wrapperD3D12)
         return Result::UNSUPPORTED;
 
+    table.GetFenceValueCheckedD3D12 = ::GetFenceValueCheckedD3D12;
+    table.WaitFenceCheckedD3D12 = ::WaitFenceCheckedD3D12;
+    table.ResetCommandAllocatorCheckedD3D12 = ::ResetCommandAllocatorCheckedD3D12;
     table.CreateCommandBufferD3D12 = ::CreateCommandBufferD3D12;
     table.CreateDescriptorPoolD3D12 = ::CreateDescriptorPoolD3D12;
     table.CreateBufferD3D12 = ::CreateBufferD3D12;

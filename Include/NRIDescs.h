@@ -1125,6 +1125,9 @@ NriStruct(DescriptorRangeDesc) {
     Nri(DescriptorType) descriptorType;
     Nri(StageBits) shaderStages;
     Nri(DescriptorRangeBits) flags;
+    // D3D12-only register mapping; 0 inherits the set/range locations. Physical descriptor packing is unchanged.
+    NriOptional uint32_t d3dRegisterSpacePlusOne;
+    NriOptional uint32_t d3dRegisterIndex;
 };
 
 // "DescriptorSet" consists of "DescriptorRange" entities

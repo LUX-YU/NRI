@@ -72,3 +72,55 @@ NRI_INLINE Result FenceD3D12::Wait(uint64_t value) {
 
     return Result::SUCCESS;
 }
+
+NRI_INLINE Result FenceD3D12::GetValueChecked(uint64_t& value) const {
+    if (!m_Fence)
+        return Result::INVALID_ARGUMENT;
+    uint64_t completed = m_Fence->GetCompletedValue();
+    if (completed == UINT64_MAX)
+        return Result::DEVICE_LOST;
+    value = completed;
+    return Result::SUCCESS;
+}
+
+NRI_INLINE Result FenceD3D12::WaitChecked(uint64_t value, uint64_t timeoutNs, bool& ready) {
+    ready = false;
+    uint64_t completed = 0;
+    Result status = GetValueChecked(completed);
+    if (status != Result::SUCCESS)
+        return status;
+    if (completed >= value) {
+        ready = true;
+        return Result::SUCCESS;
+    }
+    if (timeoutNs == 0)
+        return Result::SUCCESS;
+    ExclusiveScope lock(m_CheckedLock);
+    status = GetValueChecked(completed);
+    if (status != Result::SUCCESS)
+        return status;
+    if (completed >= value) {
+        ready = true;
+        return Result::SUCCESS;
+    }
+    if (!m_CheckedEvent)
+        m_CheckedEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (!m_CheckedEvent)
+        return Result::FAILURE;
+    // Keep the event alive through a timed-out registration. Never reset an event still pending in the kernel.
+    if (m_CheckedValue == 0 || completed >= m_CheckedValue) {
+        ResetEvent(m_CheckedEvent);
+        HRESULT hr = m_Fence->SetEventOnCompletion(value, m_CheckedEvent);
+        if (FAILED(hr))
+            return GetResultFromHRESULT(hr);
+        m_CheckedValue = value;
+    }
+    uint64_t milliseconds = timeoutNs / 1000000 + (timeoutNs % 1000000 != 0);
+    DWORD timeout = timeoutNs == UINT64_MAX ? INFINITE : (DWORD)std::min<uint64_t>(milliseconds, INFINITE - 1);
+    DWORD waited = WaitForSingleObject(m_CheckedEvent, timeout);
+    if (waited != WAIT_OBJECT_0 && waited != WAIT_TIMEOUT)
+        return Result::FAILURE;
+    status = GetValueChecked(completed);
+    ready = status == Result::SUCCESS && completed >= value;
+    return status;
+}
