@@ -57,7 +57,9 @@ NRI_INLINE Result QueueD3D12::Submit(const QueueSubmitDesc& queueSubmitDesc) {
     for (uint32_t i = 0; i < queueSubmitDesc.waitFenceNum; i++) {
         const FenceSubmitDesc& fenceSubmitDesc = queueSubmitDesc.waitFences[i];
         FenceD3D12* fence = (FenceD3D12*)fenceSubmitDesc.fence;
-        fence->QueueWait(*this, fenceSubmitDesc.value);
+        const Result result = fence->QueueWait(*this, fenceSubmitDesc.value);
+        if (result != Result::SUCCESS)
+            return result == Result::DEVICE_LOST ? result : Result::FAILURE; // Earlier queue operations may be accepted.
     }
 
     if (queueSubmitDesc.commandBufferNum) {
@@ -71,7 +73,9 @@ NRI_INLINE Result QueueD3D12::Submit(const QueueSubmitDesc& queueSubmitDesc) {
     for (uint32_t i = 0; i < queueSubmitDesc.signalFenceNum; i++) {
         const FenceSubmitDesc& fenceSubmitDesc = queueSubmitDesc.signalFences[i];
         FenceD3D12* fence = (FenceD3D12*)fenceSubmitDesc.fence;
-        fence->QueueSignal(*this, fenceSubmitDesc.value);
+        const Result result = fence->QueueSignal(*this, fenceSubmitDesc.value);
+        if (result != Result::SUCCESS)
+            return result == Result::DEVICE_LOST ? result : Result::FAILURE; // Command lists may already be executing.
     }
 
     // Is device lost?
@@ -86,8 +90,9 @@ NRI_INLINE Result QueueD3D12::WaitIdle() {
     FenceDesc fenceDesc = {};
     Result result = m_Device.CreateImplementation<FenceD3D12>(fence, fenceDesc);
     if (result == Result::SUCCESS) {
-        fence->QueueSignal(*this, 1);
-        result = fence->Wait(1);
+        result = fence->QueueSignal(*this, 1);
+        if (result == Result::SUCCESS)
+            result = fence->Wait(1);
 
         Destroy(fence);
     }

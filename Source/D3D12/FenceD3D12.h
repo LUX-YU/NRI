@@ -37,8 +37,8 @@ struct FenceD3D12 final : public DebugNameBase {
     //================================================================================================================
 
     uint64_t GetFenceValue() const;
-    void QueueSignal(QueueD3D12& queue, uint64_t value);
-    void QueueWait(QueueD3D12& queue, uint64_t value);
+    Result QueueSignal(QueueD3D12& queue, uint64_t value);
+    Result QueueWait(QueueD3D12& queue, uint64_t value);
     Result Wait(uint64_t value);
     Result GetValueChecked(uint64_t& value) const;
     Result WaitChecked(uint64_t value, uint64_t timeoutNs, bool& ready);
