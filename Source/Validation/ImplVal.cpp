@@ -2640,6 +2640,43 @@ static VKHandle NRI_CALL GetPhysicalDeviceVK(const Device& device) {
     return ((DeviceVal&)device).GetWrapperVKInterfaceImpl().GetPhysicalDeviceVK(((DeviceVal&)device).GetImpl());
 }
 
+static Result NRI_CALL RetireSwapChainVK(SwapChain& swapChain, Fence* unconsumedAcquire, uint64_t timeoutNs) {
+    auto& object = (SwapChainVal&)swapChain;
+    auto* fence = (FenceVal*)unconsumedAcquire;
+    if (fence && &fence->GetDevice() != &object.GetDevice())
+        return Result::INVALID_ARGUMENT;
+    return object.GetWrapperVKInterfaceImpl().RetireSwapChainVK(*object.GetImpl(), fence ? fence->GetImpl() : nullptr, timeoutNs);
+}
+
+static Result NRI_CALL GetFenceValueCheckedVK(const Fence& fence, uint64_t& value) {
+    const auto& object = (const FenceVal&)fence;
+    return object.GetWrapperVKInterfaceImpl().GetFenceValueCheckedVK(*object.GetImpl(), value);
+}
+
+static Result NRI_CALL BeginReusableCommandBufferVK(CommandBuffer& commandBuffer, const DescriptorPool* descriptorPool) {
+    return ((CommandBufferVal&)commandBuffer).Begin(descriptorPool, true);
+}
+
+static Result NRI_CALL WaitFenceCheckedVK(Fence& fence, uint64_t value, uint64_t timeoutNs, bool& completed) {
+    auto& object = (FenceVal&)fence;
+    return object.GetWrapperVKInterfaceImpl().WaitFenceCheckedVK(*object.GetImpl(), value, timeoutNs, completed);
+}
+
+static Result NRI_CALL ResetCommandAllocatorCheckedVK(CommandAllocator& allocator) {
+    auto& object = (CommandAllocatorVal&)allocator;
+    return object.GetWrapperVKInterfaceImpl().ResetCommandAllocatorCheckedVK(*object.GetImpl());
+}
+
+static Result NRI_CALL FlushBufferRangeVK(Buffer& buffer, uint64_t offset, uint64_t size) {
+    auto& object = (BufferVal&)buffer;
+    return object.GetWrapperVKInterfaceImpl().FlushBufferRangeVK(*object.GetImpl(), offset, size);
+}
+
+static Result NRI_CALL InvalidateBufferRangeVK(Buffer& buffer, uint64_t offset, uint64_t size) {
+    auto& object = (BufferVal&)buffer;
+    return object.GetWrapperVKInterfaceImpl().InvalidateBufferRangeVK(*object.GetImpl(), offset, size);
+}
+
 static uint32_t NRI_CALL GetQueueFamilyIndexVK(const Queue& queue) {
     const QueueVal& queueVal = (QueueVal&)queue;
     return queueVal.GetWrapperVKInterfaceImpl().GetQueueFamilyIndexVK(*queueVal.GetImpl());
@@ -2679,6 +2716,13 @@ Result DeviceVal::FillFunctionTable(WrapperVKInterface& table) const {
     table.GetInstanceVK = ::GetInstanceVK;
     table.GetDeviceProcAddrVK = ::GetDeviceProcAddrVK;
     table.GetInstanceProcAddrVK = ::GetInstanceProcAddrVK;
+    table.RetireSwapChainVK = ::RetireSwapChainVK;
+    table.GetFenceValueCheckedVK = ::GetFenceValueCheckedVK;
+    table.BeginReusableCommandBufferVK = ::BeginReusableCommandBufferVK;
+    table.WaitFenceCheckedVK = ::WaitFenceCheckedVK;
+    table.ResetCommandAllocatorCheckedVK = ::ResetCommandAllocatorCheckedVK;
+    table.FlushBufferRangeVK = ::FlushBufferRangeVK;
+    table.InvalidateBufferRangeVK = ::InvalidateBufferRangeVK;
 
     return Result::SUCCESS;
 #else

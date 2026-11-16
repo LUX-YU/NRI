@@ -1,5 +1,7 @@
 // © 2021 NVIDIA Corporation
 
+#include <chrono>
+
 constexpr uint32_t PRESENT_MODE_MAX_NUM = 16;
 
 static constexpr VkPresentGravityFlagBitsKHR GetGravity(Gravity gravity) {
@@ -16,7 +18,6 @@ static constexpr VkPresentGravityFlagBitsKHR GetGravity(Gravity gravity) {
 }
 
 SwapChainVK::~SwapChainVK() {
-    // TODO: use "vkReleaseSwapchainImagesEXT" to release acquired but not presented images?
 
     for (size_t i = 0; i < m_Textures.size(); i++)
         Destroy(m_Textures[i]);
@@ -24,6 +25,10 @@ SwapChainVK::~SwapChainVK() {
     Destroy(m_LatencyFence);
 
     const auto& vk = m_Device.GetDispatchTable();
+    for (VkFence fence : m_PresentFences) {
+        if (fence)
+            vk.DestroyFence(m_Device, fence, m_Device.GetVkAllocationCallbacks());
+    }
     if (m_Handle)
         vk.DestroySwapchainKHR(m_Device, m_Handle, m_Device.GetVkAllocationCallbacks());
 
@@ -42,6 +47,7 @@ Result SwapChainVK::Create(const SwapChainDesc& swapChainDesc) {
         if (swapChainDesc.window.windows.hwnd) {
             VkWin32SurfaceCreateInfoKHR win32SurfaceInfo = {VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR};
             win32SurfaceInfo.hwnd = (HWND)swapChainDesc.window.windows.hwnd;
+            win32SurfaceInfo.hinstance = (HINSTANCE)GetWindowLongPtrW(win32SurfaceInfo.hwnd, GWLP_HINSTANCE);
 
             VkResult vkResult = vk.CreateWin32SurfaceKHR(m_Device, &win32SurfaceInfo, m_Device.GetVkAllocationCallbacks(), &m_Surface);
             NRI_RETURN_ON_BAD_VKRESULT(&m_Device, vkResult, "vkCreateWin32SurfaceKHR");
@@ -422,6 +428,15 @@ Result SwapChainVK::Create(const SwapChainDesc& swapChainDesc) {
         Scratch<VkImage> imageHandles = NRI_ALLOCATE_SCRATCH(m_Device, VkImage, imageNum);
         vk.GetSwapchainImagesKHR(m_Device, m_Handle, &imageNum, imageHandles);
 
+        if (m_Device.m_IsSupported.swapChainMaintenance1) {
+            m_PresentFences.resize(imageNum, VK_NULL_HANDLE);
+            m_PresentFencePending.resize(imageNum, 0);
+            const VkFenceCreateInfo fenceInfo = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+            for (uint32_t i = 0; i < imageNum; i++) {
+                VkResult result = vk.CreateFence(m_Device, &fenceInfo, m_Device.GetVkAllocationCallbacks(), &m_PresentFences[i]);
+                NRI_RETURN_ON_BAD_VKRESULT(&m_Device, result, "vkCreateFence");
+            }
+        }
         m_Textures.resize(imageNum);
         for (uint32_t i = 0; i < imageNum; i++) {
             TextureVKDesc desc = {};
@@ -476,23 +491,30 @@ NRI_INLINE Texture* const* SwapChainVK::GetTextures(uint32_t& textureNum) const 
 }
 
 NRI_INLINE Result SwapChainVK::AcquireNextTexture(FenceVK& acquireSemaphore, uint32_t& textureIndex) {
+    if (m_TextureIndex != UINT32_MAX || m_AcquireRetirementPending)
+        return Result::NOT_READY;
     ExclusiveScope lock(m_Queue->GetLock());
 
     // Acquire next image (signal)
     VkAcquireNextImageInfoKHR acquireInfo = {VK_STRUCTURE_TYPE_ACQUIRE_NEXT_IMAGE_INFO_KHR};
     acquireInfo.swapchain = m_Handle;
-    acquireInfo.timeout = MsToUs(NRI_TIMEOUT_PRESENT);
+    acquireInfo.timeout = 0; // Output backpressure must not block the rendering service.
     acquireInfo.semaphore = acquireSemaphore;
     acquireInfo.deviceMask = NODE_MASK;
 
     const auto& vk = m_Device.GetDispatchTable();
-    VkResult vkResult = vk.AcquireNextImage2KHR(m_Device, &acquireInfo, &m_TextureIndex);
+    uint32_t acquiredTextureIndex = 0;
+    VkResult vkResult = vk.AcquireNextImage2KHR(m_Device, &acquireInfo, &acquiredTextureIndex);
+    if (vkResult == VK_TIMEOUT || vkResult == VK_NOT_READY)
+        return Result::NOT_READY;
     if (vkResult == VK_ERROR_OUT_OF_DATE_KHR)
         return Result::OUT_OF_DATE;
 
     NRI_RETURN_ON_BAD_VKRESULT(&m_Device, vkResult, "AcquireNextImage2KHR");
 
-    textureIndex = m_TextureIndex;
+    // SUBOPTIMAL still acquires an image and signals its semaphore. Publish only acquired images.
+    m_TextureIndex = acquiredTextureIndex;
+    textureIndex = acquiredTextureIndex;
 
     return Result::SUCCESS;
 }
@@ -506,13 +528,34 @@ NRI_INLINE Result SwapChainVK::WaitForPresent(uint64_t presentId) {
     if (vkResult == VK_ERROR_OUT_OF_DATE_KHR)
         return Result::OUT_OF_DATE;
 
+    if (vkResult == VK_TIMEOUT || vkResult == VK_NOT_READY)
+        return Result::NOT_READY;
     NRI_RETURN_ON_BAD_VKRESULT(&m_Device, vkResult, "WaitForPresentKHR");
 
     return Result::SUCCESS;
 }
 
 NRI_INLINE Result SwapChainVK::Present(FenceVK& releaseSemaphore, uint64_t presentIdValue) {
+    if (m_TextureIndex == UINT32_MAX || m_AcquireRetirementPending)
+        return Result::INVALID_ARGUMENT;
     ExclusiveScope lock(m_Queue->GetLock());
+
+    const auto& vk = m_Device.GetDispatchTable();
+    VkSwapchainPresentFenceInfoEXT fenceInfo = {VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT};
+    if (!m_PresentFences.empty()) {
+        VkFence& fence = m_PresentFences[m_TextureIndex];
+        if (m_PresentFencePending[m_TextureIndex]) {
+            VkResult status = vk.GetFenceStatus(m_Device, fence);
+            if (status == VK_NOT_READY)
+                return Result::NOT_READY;
+            NRI_RETURN_ON_BAD_VKRESULT(&m_Device, status, "vkGetFenceStatus");
+            status = vk.ResetFences(m_Device, 1, &fence);
+            NRI_RETURN_ON_BAD_VKRESULT(&m_Device, status, "vkResetFences");
+            m_PresentFencePending[m_TextureIndex] = 0;
+        }
+        fenceInfo.swapchainCount = 1;
+        fenceInfo.pFences = &fence;
+    }
 
     // Present (wait)
     VkSemaphore vkReleaseSemaphore = releaseSemaphore;
@@ -528,23 +571,97 @@ NRI_INLINE Result SwapChainVK::Present(FenceVK& releaseSemaphore, uint64_t prese
     presentId.swapchainCount = 1;
     presentId.pPresentIds = &presentIdValue;
 
-    if (m_Device.m_IsSupported.presentId)
-        presentInfo.pNext = &presentId;
+    PNEXTCHAIN_DECLARE(presentInfo.pNext);
+    if (m_Device.m_IsSupported.presentId && presentIdValue != 0)
+        PNEXTCHAIN_APPEND_STRUCT(presentId);
+    if (!m_PresentFences.empty())
+        PNEXTCHAIN_APPEND_STRUCT(fenceInfo);
 
     if ((m_Flags & SwapChainBits::ALLOW_LOW_LATENCY) && presentIdValue != 0)
         SetLatencyMarker(presentIdValue, (LatencyMarker)VK_LATENCY_MARKER_PRESENT_START_NV);
 
-    const auto& vk = m_Device.GetDispatchTable();
     VkResult vkResult = vk.QueuePresentKHR(*m_Queue, &presentInfo);
 
     if ((m_Flags & SwapChainBits::ALLOW_LOW_LATENCY) && presentIdValue != 0)
         SetLatencyMarker(presentIdValue, (LatencyMarker)VK_LATENCY_MARKER_PRESENT_END_NV);
 
+    const bool notEnqueued = vkResult == VK_ERROR_OUT_OF_HOST_MEMORY || vkResult == VK_ERROR_OUT_OF_DEVICE_MEMORY;
+    if (!notEnqueued) {
+        if (!m_PresentFences.empty())
+            m_PresentFencePending[m_TextureIndex] = 1;
+        // Unknown errors do not prove that the image is still acquired. Only the fence
+        // can authorize destruction; never attempt Release on that uncertain image.
+        m_TextureIndex = UINT32_MAX;
+    }
+    // Unknown results cannot prove safe destruction. Keep the pending fence for bounded
+    // retirement; DEVICE_LOST is returned by the device fence query without a CPU wait.
     if (vkResult == VK_ERROR_OUT_OF_DATE_KHR)
         return Result::OUT_OF_DATE;
-
     NRI_RETURN_ON_BAD_VKRESULT(&m_Device, vkResult, "QueuePresentKHR");
 
+    return Result::SUCCESS;
+}
+
+NRI_INLINE Result SwapChainVK::Retire(FenceVK* unconsumedAcquire, uint64_t timeoutNs) {
+    if (!m_Device.m_IsSupported.swapChainMaintenance1)
+        return Result::UNSUPPORTED;
+
+    const auto& vk = m_Device.GetDispatchTable();
+    const auto started = std::chrono::steady_clock::now();
+    const auto wait = [&](VkFence fence) {
+        VkResult result = vk.GetFenceStatus(m_Device, fence);
+        if (result != VK_NOT_READY)
+            return result;
+        const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - started).count();
+        const auto remaining = uint64_t(elapsed) < timeoutNs ? timeoutNs - uint64_t(elapsed) : 0;
+        result = vk.WaitForFences(m_Device, 1, &fence, VK_TRUE, remaining);
+        if (result == VK_TIMEOUT)
+            NRI_REPORT_ERROR(&m_Device, "SwapChain retirement exceeded its total deadline; native objects remain borrowed");
+        return result;
+    };
+    for (size_t i = 0; i < m_PresentFences.size(); i++) {
+        if (!m_PresentFencePending[i])
+            continue;
+        VkResult result = wait(m_PresentFences[i]);
+        if (result == VK_TIMEOUT || result == VK_NOT_READY)
+            return Result::NOT_READY;
+        NRI_RETURN_ON_BAD_VKRESULT(&m_Device, result, "present retirement fence");
+        result = vk.ResetFences(m_Device, 1, &m_PresentFences[i]);
+        NRI_RETURN_ON_BAD_VKRESULT(&m_Device, result, "vkResetFences");
+        m_PresentFencePending[i] = 0;
+    }
+    if (m_TextureIndex == UINT32_MAX)
+        return Result::SUCCESS;
+
+    if (unconsumedAcquire && !m_AcquireRetirementPending) {
+        VkSemaphoreSubmitInfo semaphore = {VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+        semaphore.semaphore = *unconsumedAcquire;
+        semaphore.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        VkSubmitInfo2 submit = {VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
+        submit.waitSemaphoreInfoCount = 1;
+        submit.pWaitSemaphoreInfos = &semaphore;
+        VkResult result;
+        {
+            ExclusiveScope lock(m_Queue->GetLock());
+            result = vk.QueueSubmit2(*m_Queue, 1, &submit, m_PresentFences[m_TextureIndex]);
+        }
+        NRI_RETURN_ON_BAD_VKRESULT(&m_Device, result, "acquire retirement submit");
+        m_AcquireRetirementPending = true;
+    }
+    if (m_AcquireRetirementPending) {
+        VkResult result = wait(m_PresentFences[m_TextureIndex]);
+        if (result == VK_TIMEOUT || result == VK_NOT_READY)
+            return Result::NOT_READY;
+        NRI_RETURN_ON_BAD_VKRESULT(&m_Device, result, "acquire retirement fence");
+    }
+    VkReleaseSwapchainImagesInfoEXT release = {VK_STRUCTURE_TYPE_RELEASE_SWAPCHAIN_IMAGES_INFO_EXT};
+    release.swapchain = m_Handle;
+    release.imageIndexCount = 1;
+    release.pImageIndices = &m_TextureIndex;
+    VkResult result = vk.ReleaseSwapchainImagesEXT(m_Device, &release);
+    NRI_RETURN_ON_BAD_VKRESULT(&m_Device, result, "vkReleaseSwapchainImages");
+    m_TextureIndex = UINT32_MAX;
+    m_AcquireRetirementPending = false;
     return Result::SUCCESS;
 }
 

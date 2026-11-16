@@ -60,6 +60,7 @@ struct BufferVK final : public DebugNameBase {
 
     void* Map(uint64_t offset, uint64_t size);
     void Unmap();
+    Result SynchronizeMappedRange(uint64_t offset, uint64_t size, bool invalidate);
 
 private:
     void UpdateDeviceAddress();

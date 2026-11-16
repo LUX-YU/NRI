@@ -34,6 +34,7 @@ struct CommandAllocatorVK final : public DebugNameBase {
 
     Result CreateCommandBuffer(CommandBuffer*& commandBuffer);
     void Reset();
+    Result ResetChecked();
 
 private:
     DeviceVK& m_Device;

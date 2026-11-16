@@ -5,6 +5,7 @@
 #pragma once
 
 #define NRI_WRAPPER_VK_H 1
+#define NRI_VK_CHECKED_OPERATIONS_VERSION 1
 
 #include "NRIDeviceCreation.h"
 #include "NRIRayTracing.h"
@@ -128,6 +129,21 @@ NriStruct(WrapperVKInterface) {
     VKHandle    (NRI_CALL *GetInstanceVK)                   (const NriRef(Device) device);
     void*       (NRI_CALL *GetInstanceProcAddrVK)           (const NriRef(Device) device);
     void*       (NRI_CALL *GetDeviceProcAddrVK)             (const NriRef(Device) device);
+
+    // Caller has settled GPU uses and excludes concurrent Acquire/Present. One-shot cold
+    // retirement; NOT_READY retains all handles and must not be followed by destruction.
+    Nri(Result) (NRI_CALL *RetireSwapChainVK)              (NriRef(SwapChain) swapChain, NriOptional Nri(Fence*) unconsumedAcquire, uint64_t timeoutNs);
+
+    // Checked operations. Timeout is SUCCESS with completed=false, never a completed fence.
+    Nri(Result) (NRI_CALL *GetFenceValueCheckedVK)         (const NriRef(Fence) fence, NriOut NonNriRef(uint64_t) value);
+    // Reusable primary recording: the caller must wait for all prior submissions before reset/re-record.
+    Nri(Result) (NRI_CALL *BeginReusableCommandBufferVK)   (NriRef(CommandBuffer) commandBuffer, const NriPtr(DescriptorPool) descriptorPool);
+    Nri(Result) (NRI_CALL *WaitFenceCheckedVK)             (NriRef(Fence) fence, uint64_t value, uint64_t timeoutNs, NriOut NonNriRef(bool) completed);
+    Nri(Result) (NRI_CALL *ResetCommandAllocatorCheckedVK) (NriRef(CommandAllocator) allocator);
+    // Explicit byte ranges on persistently mapped buffers. Non-coherent external/manual
+    // allocations are unsupported: the wrapper cannot prove their mapped allocation bounds.
+    Nri(Result) (NRI_CALL *FlushBufferRangeVK)             (NriRef(Buffer) buffer, uint64_t offset, uint64_t size);
+    Nri(Result) (NRI_CALL *InvalidateBufferRangeVK)        (NriRef(Buffer) buffer, uint64_t offset, uint64_t size);
 };
 
 NRI_API Nri(Result) NRI_CALL nriCreateDeviceFromVKDevice(const NriRef(DeviceCreationVKDesc) deviceDesc, NriOut NriRef(Device*) device);

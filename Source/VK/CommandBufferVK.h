@@ -43,7 +43,7 @@ struct CommandBufferVK final : public DebugNameBase {
     // NRI
     //================================================================================================================
 
-    Result Begin(const DescriptorPool* descriptorPool);
+    Result Begin(const DescriptorPool* descriptorPool, bool reusable = false);
     Result End();
     void SetPipeline(const Pipeline& pipeline);
     void SetPipelineLayout(BindPoint bindPoint, const PipelineLayout& pipelineLayout);

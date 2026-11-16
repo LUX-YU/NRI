@@ -7,7 +7,9 @@ namespace nri {
 struct SwapChainVK final : public DisplayDescHelper, DebugNameBase {
     SwapChainVK(DeviceVK& device)
         : m_Device(device)
-        , m_Textures(device.GetStdAllocator()) {
+        , m_Textures(device.GetStdAllocator())
+        , m_PresentFences(device.GetStdAllocator())
+        , m_PresentFencePending(device.GetStdAllocator()) {
     }
 
     ~SwapChainVK();
@@ -36,6 +38,7 @@ struct SwapChainVK final : public DisplayDescHelper, DebugNameBase {
     Result AcquireNextTexture(FenceVK& acquireSemaphore, uint32_t& textureIndex);
     Result WaitForPresent(uint64_t presentId);
     Result Present(FenceVK& releaseSemaphore, uint64_t presentId);
+    Result Retire(FenceVK* unconsumedAcquire, uint64_t timeoutNs);
 
     Result SetLatencySleepMode(const LatencySleepMode& latencySleepMode);
     Result SetLatencyMarker(uint64_t presentId, LatencyMarker latencyMarker);
@@ -45,12 +48,15 @@ struct SwapChainVK final : public DisplayDescHelper, DebugNameBase {
 private:
     DeviceVK& m_Device;
     Vector<TextureVK*> m_Textures;
+    Vector<VkFence> m_PresentFences;
+    Vector<uint8_t> m_PresentFencePending;
     FenceVK* m_LatencyFence = nullptr;
     VkSwapchainKHR m_Handle = VK_NULL_HANDLE;
     VkSurfaceKHR m_Surface = VK_NULL_HANDLE;
     QueueVK* m_Queue = nullptr;
     void* m_Hwnd = nullptr;
-    uint32_t m_TextureIndex = 0;
+    uint32_t m_TextureIndex = UINT32_MAX;
+    bool m_AcquireRetirementPending = false;
     SwapChainBits m_Flags = SwapChainBits::NONE;
 };
 

@@ -1,0 +1,8 @@
+{
+  "upstream": "https://github.com/NVIDIA-RTX/NRI.git",
+  "upstream_tag": "v192",
+  "upstream_commit": "cb3ab322b64ae5bfe8587154a6ef3b1459fdd415",
+  "integration": "Independent Lux fork; consumers pin a commit from codex/lux-v192.",
+  "vk_checked_operations_version": 1,
+  "repository": "https://github.com/LUX-YU/NRI.git"
+}

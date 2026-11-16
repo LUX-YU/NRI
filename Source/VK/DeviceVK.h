@@ -302,7 +302,7 @@ private:
     VkResult CreateVma();
     void FilterInstanceLayers(Vector<const char*>& layers);
     void ProcessInstanceExtensions(Vector<const char*>& desiredInstanceExts);
-    void ProcessDeviceExtensions(Vector<const char*>& desiredDeviceExts, bool disableRayTracing, DeviceLostInfoLevel deviceLostInfoLevel);
+    void ProcessDeviceExtensions(Vector<const char*>& desiredDeviceExts, bool disableRayTracing, DeviceLostInfoLevel deviceLostInfoLevel, const Vector<const char*>& instanceExts);
     void ReportMemoryTypes();
     Result CreateInstance(bool enableGraphicsAPIValidation, const Vector<const char*>& desiredInstanceExts, const void* instanceCreateInfoNext);
     Result ResolvePreInstanceDispatchTable();

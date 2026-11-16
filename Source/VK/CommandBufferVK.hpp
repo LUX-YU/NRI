@@ -489,9 +489,9 @@ NRI_INLINE void CommandBufferVK::SetDebugName(const char* name) {
     m_Device.SetDebugNameToTrivialObject(VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)m_Handle, name);
 }
 
-NRI_INLINE Result CommandBufferVK::Begin(const DescriptorPool*) {
+NRI_INLINE Result CommandBufferVK::Begin(const DescriptorPool*, bool reusable) {
     VkCommandBufferBeginInfo info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-    info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    info.flags = reusable ? 0 : VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
     const auto& vk = m_Device.GetDispatchTable();
     VkResult vkResult = vk.BeginCommandBuffer(m_Handle, &info);

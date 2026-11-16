@@ -575,7 +575,7 @@ static bool IsVideoAV1EncodePictureDescValid(const VideoEncodeDesc& videoEncodeD
     return desc.primaryReferenceName == VideoAV1ReferenceName::NONE || HasVideoAV1ReferenceName(desc.references, desc.referenceNum, desc.primaryReferenceName);
 }
 
-NRI_INLINE Result CommandBufferVal::Begin(const DescriptorPool* descriptorPool) {
+NRI_INLINE Result CommandBufferVal::Begin(const DescriptorPool* descriptorPool, bool reusable) {
     NRI_RETURN_ON_FAILURE(&m_Device, !m_IsRecordingStarted, Result::FAILURE, "already in the recording state");
 
     if (descriptorPool) {
@@ -585,7 +585,8 @@ NRI_INLINE Result CommandBufferVal::Begin(const DescriptorPool* descriptorPool) 
 
     DescriptorPool* descriptorPoolImpl = NRI_GET_IMPL(DescriptorPool, descriptorPool);
 
-    Result result = GetCoreInterfaceImpl().BeginCommandBuffer(*GetImpl(), descriptorPoolImpl);
+    Result result = reusable ? GetWrapperVKInterfaceImpl().BeginReusableCommandBufferVK(*GetImpl(), descriptorPoolImpl)
+                             : GetCoreInterfaceImpl().BeginCommandBuffer(*GetImpl(), descriptorPoolImpl);
     if (result == Result::SUCCESS)
         m_IsRecordingStarted = true;
 

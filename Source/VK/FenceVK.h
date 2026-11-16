@@ -35,6 +35,8 @@ struct FenceVK final : public DebugNameBase {
 
     uint64_t GetFenceValue() const;
     Result Wait(uint64_t value);
+    Result GetFenceValueChecked(uint64_t& value) const;
+    Result WaitChecked(uint64_t value, uint64_t timeoutNs, bool& completed);
 
 private:
     DeviceVK& m_Device;

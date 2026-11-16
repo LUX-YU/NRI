@@ -42,7 +42,7 @@ struct CommandBufferVal final : public ObjectVal {
     // NRI
     //================================================================================================================
 
-    Result Begin(const DescriptorPool* descriptorPool);
+    Result Begin(const DescriptorPool* descriptorPool, bool reusable = false);
     Result End();
     void SetViewports(const Viewport* viewports, uint32_t viewportNum);
     void SetScissors(const Rect* rects, uint32_t rectNum);

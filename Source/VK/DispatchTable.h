@@ -74,6 +74,11 @@ struct DispatchTable {
     VK_FUNC(CreateSampler);                               // + | +
     VK_FUNC(CreateQueryPool);                             // + | +
     VK_FUNC(CreateCommandPool);                           // + | +
+    VK_FUNC(CreateFence);
+    VK_FUNC(DestroyFence);
+    VK_FUNC(ResetFences);
+    VK_FUNC(GetFenceStatus);
+    VK_FUNC(WaitForFences);
     VK_FUNC(CreateSemaphore);                             // + | +
     VK_FUNC(CreateDescriptorPool);                        // + | +
     VK_FUNC(CreatePipelineLayout);                        // + | +
@@ -204,6 +209,7 @@ struct DispatchTable {
     VK_FUNC(QueuePresentKHR);                             // - | ? may return "VK_ERROR_DEVICE_LOST"
     VK_FUNC(CreateSwapchainKHR);                          // + | ? may return "VK_ERROR_DEVICE_LOST"
     VK_FUNC(DestroySwapchainKHR);                         // - | +
+    VK_FUNC(ReleaseSwapchainImagesEXT);
     VK_FUNC(GetSwapchainImagesKHR);                       // + | +
                                                           // VK_KHR_present_wait
     VK_FUNC(WaitForPresentKHR);                           // - | ? may return "VK_ERROR_DEVICE_LOST"

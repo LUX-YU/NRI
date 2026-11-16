@@ -140,6 +140,7 @@ NriStruct(SwapChainInterface) {
 
     // "acquireSemaphore" must be created with "SWAPCHAIN_SEMAPHORE" initial value (ignored in D3D and WGPU). VK/WGPU: may return "OUT_OF_DATE"
     // WGPU: "NOT_READY" means no texture was acquired; skip the frame, process window events and retry without recreating the swap chain
+    // VK: zero-timeout Acquire returns NOT_READY without publishing an index; SUBOPTIMAL is acquired.
     Nri(Result)             (NRI_CALL *AcquireNextTexture)      (NriRef(SwapChain) swapChain, NriRef(Fence) acquireSemaphore, NriOut NonNriRef(uint32_t) textureIndex);
 
     // "presentId" must identify a previously queued presentation. Call once immediately before input sampling

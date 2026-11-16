@@ -46,3 +46,9 @@ NRI_INLINE void CommandAllocatorVK::Reset() {
     VkResult vkResult = vk.ResetCommandPool(m_Device, m_Handle, (VkCommandPoolResetFlags)0);
     NRI_RETURN_VOID_ON_BAD_VKRESULT(&m_Device, vkResult, "vkResetCommandPool");
 }
+
+NRI_INLINE Result CommandAllocatorVK::ResetChecked() {
+    ExclusiveScope lock(m_Lock);
+    const auto& vk = m_Device.GetDispatchTable();
+    return GetResultFromVkResult(vk.ResetCommandPool(m_Device, m_Handle, (VkCommandPoolResetFlags)0));
+}

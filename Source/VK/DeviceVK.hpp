@@ -554,6 +554,9 @@ void DeviceVK::ProcessInstanceExtensions(Vector<const char*>& desiredInstanceExt
 #endif
     }
 
+    if (IsExtensionSupported("VK_KHR_surface_maintenance1", supportedExts))
+        desiredInstanceExts.push_back("VK_KHR_surface_maintenance1");
+
     if (IsExtensionSupported(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME, supportedExts))
         desiredInstanceExts.push_back(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
 
@@ -564,7 +567,7 @@ void DeviceVK::ProcessInstanceExtensions(Vector<const char*>& desiredInstanceExt
         desiredInstanceExts.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 }
 
-void DeviceVK::ProcessDeviceExtensions(Vector<const char*>& desiredDeviceExts, bool disableRayTracing, DeviceLostInfoLevel deviceLostInfoLevel) {
+void DeviceVK::ProcessDeviceExtensions(Vector<const char*>& desiredDeviceExts, bool disableRayTracing, DeviceLostInfoLevel deviceLostInfoLevel, const Vector<const char*>& instanceExts) {
     // Query extensions
     uint32_t extensionNum = 0;
     m_VK.EnumerateDeviceExtensionProperties(m_PhysicalDevice, nullptr, &extensionNum, nullptr);
@@ -664,7 +667,13 @@ void DeviceVK::ProcessDeviceExtensions(Vector<const char*>& desiredDeviceExts, b
     APPEND_EXT(true, VK_EXT_SAMPLE_LOCATIONS_EXTENSION_NAME);
     APPEND_EXT(true, VK_EXT_SHADER_ATOMIC_FLOAT_2_EXTENSION_NAME);
     APPEND_EXT(true, VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME);
-    APPEND_EXT(true, VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
+    const bool khrMaintenance = IsExtensionSupported("VK_KHR_surface_maintenance1", instanceExts) &&
+        IsExtensionSupported("VK_KHR_swapchain_maintenance1", supportedExts);
+    if (khrMaintenance)
+        desiredDeviceExts.push_back("VK_KHR_swapchain_maintenance1");
+    else {
+        APPEND_EXT(IsExtensionSupported(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME, instanceExts), VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
+    }
     APPEND_EXT(true, VK_EXT_ZERO_INITIALIZE_DEVICE_MEMORY_EXTENSION_NAME);
     APPEND_EXT(true, VK_EXT_MUTABLE_DESCRIPTOR_TYPE_EXTENSION_NAME);
     APPEND_EXT(true, VK_NVX_BINARY_IMPORT_EXTENSION_NAME);
@@ -754,9 +763,8 @@ Result DeviceVK::Create(const DeviceCreationDesc& desc, const DeviceCreationVKDe
         }
     }
 
+    Vector<const char*> desiredInstanceExts(GetStdAllocator());
     { // Create instance
-        // Temporary Vectors are acceptable during one-time device initialization
-        Vector<const char*> desiredInstanceExts(GetStdAllocator());
         for (uint32_t i = 0; i < desc.vkExtensions.instanceExtensionNum; i++)
             desiredInstanceExts.push_back(desc.vkExtensions.instanceExtensions[i]);
 
@@ -895,7 +903,7 @@ Result DeviceVK::Create(const DeviceCreationDesc& desc, const DeviceCreationVKDe
         desiredDeviceExts.push_back(desc.vkExtensions.deviceExtensions[i]);
 
     if (!isWrapper)
-        ProcessDeviceExtensions(desiredDeviceExts, desc.disableVKRayTracing, desc.deviceLostInfoLevel);
+        ProcessDeviceExtensions(desiredDeviceExts, desc.disableVKRayTracing, desc.deviceLostInfoLevel, desiredInstanceExts);
 
     { // Video codec operations enabled on the device
         VkVideoCodecOperationFlagsKHR enabledDecodeCodecOperations = 0;
@@ -993,7 +1001,11 @@ Result DeviceVK::Create(const DeviceCreationDesc& desc, const DeviceCreationVKDe
     PNEXTCHAIN_APPEND_FEATURES(true, EXT, Robustness2, ROBUSTNESS_2);
     PNEXTCHAIN_APPEND_FEATURES(true, EXT, ShaderAtomicFloat, SHADER_ATOMIC_FLOAT);
     PNEXTCHAIN_APPEND_FEATURES(true, EXT, ShaderAtomicFloat2, SHADER_ATOMIC_FLOAT_2);
-    PNEXTCHAIN_APPEND_FEATURES(true, EXT, SwapchainMaintenance1, SWAPCHAIN_MAINTENANCE_1);
+    // KHR promotion aliases the EXT structure and sType; pinned headers expose the EXT spelling.
+    VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT SwapchainMaintenance1Features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT};
+    if (IsExtensionSupported("VK_KHR_swapchain_maintenance1", desiredDeviceExts) ||
+        IsExtensionSupported(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME, desiredDeviceExts))
+        PNEXTCHAIN_APPEND_STRUCT(SwapchainMaintenance1Features);
     PNEXTCHAIN_APPEND_FEATURES(true, EXT, ZeroInitializeDeviceMemory, ZERO_INITIALIZE_DEVICE_MEMORY);
     PNEXTCHAIN_APPEND_FEATURES(true, EXT, MutableDescriptorType, MUTABLE_DESCRIPTOR_TYPE);
 
@@ -2355,6 +2367,11 @@ Result DeviceVK::ResolveDispatchTable(const Vector<const char*>& desiredDeviceEx
     GET_DEVICE_CORE_FUNC(CreateSampler);
     GET_DEVICE_CORE_FUNC(CreateQueryPool);
     GET_DEVICE_CORE_FUNC(CreateCommandPool);
+    GET_DEVICE_CORE_FUNC(CreateFence);
+    GET_DEVICE_CORE_FUNC(DestroyFence);
+    GET_DEVICE_CORE_FUNC(ResetFences);
+    GET_DEVICE_CORE_FUNC(GetFenceStatus);
+    GET_DEVICE_CORE_FUNC(WaitForFences);
     GET_DEVICE_CORE_FUNC(CreateSemaphore);
     GET_DEVICE_CORE_FUNC(CreateDescriptorPool);
     GET_DEVICE_CORE_FUNC(CreatePipelineLayout);
@@ -2491,6 +2508,13 @@ Result DeviceVK::ResolveDispatchTable(const Vector<const char*>& desiredDeviceEx
         GET_DEVICE_FUNC(CreateSwapchainKHR);
         GET_DEVICE_FUNC(DestroySwapchainKHR);
         GET_DEVICE_FUNC(GetSwapchainImagesKHR);
+    }
+
+    if (IsExtensionSupported("VK_KHR_swapchain_maintenance1", desiredDeviceExts)) {
+        m_VK.ReleaseSwapchainImagesEXT = (PFN_vkReleaseSwapchainImagesEXT)m_VK.GetDeviceProcAddr(m_Device, "vkReleaseSwapchainImagesKHR");
+        NRI_RETURN_ON_FAILURE(this, m_VK.ReleaseSwapchainImagesEXT, Result::UNSUPPORTED, "vkReleaseSwapchainImagesKHR is unavailable");
+    } else if (IsExtensionSupported(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME, desiredDeviceExts)) {
+        GET_DEVICE_FUNC(ReleaseSwapchainImagesEXT);
     }
 
     if (IsExtensionSupported(VK_KHR_PRESENT_WAIT_EXTENSION_NAME, desiredDeviceExts))

@@ -1443,6 +1443,34 @@ static Result NRI_CALL CreateAccelerationStructureVK(Device& device, const Accel
     return ((DeviceVK&)device).CreateImplementation<AccelerationStructureVK>(accelerationStructure, accelerationStructureVKDesc);
 }
 
+static Result NRI_CALL RetireSwapChainVK(SwapChain& swapChain, Fence* unconsumedAcquire, uint64_t timeoutNs) {
+    return ((SwapChainVK&)swapChain).Retire((FenceVK*)unconsumedAcquire, timeoutNs);
+}
+
+static Result NRI_CALL GetFenceValueCheckedVK(const Fence& fence, uint64_t& value) {
+    return ((const FenceVK&)fence).GetFenceValueChecked(value);
+}
+
+static Result NRI_CALL BeginReusableCommandBufferVK(CommandBuffer& commandBuffer, const DescriptorPool* descriptorPool) {
+    return ((CommandBufferVK&)commandBuffer).Begin(descriptorPool, true);
+}
+
+static Result NRI_CALL WaitFenceCheckedVK(Fence& fence, uint64_t value, uint64_t timeoutNs, bool& completed) {
+    return ((FenceVK&)fence).WaitChecked(value, timeoutNs, completed);
+}
+
+static Result NRI_CALL ResetCommandAllocatorCheckedVK(CommandAllocator& allocator) {
+    return ((CommandAllocatorVK&)allocator).ResetChecked();
+}
+
+static Result NRI_CALL FlushBufferRangeVK(Buffer& buffer, uint64_t offset, uint64_t size) {
+    return ((BufferVK&)buffer).SynchronizeMappedRange(offset, size, false);
+}
+
+static Result NRI_CALL InvalidateBufferRangeVK(Buffer& buffer, uint64_t offset, uint64_t size) {
+    return ((BufferVK&)buffer).SynchronizeMappedRange(offset, size, true);
+}
+
 static uint32_t NRI_CALL GetQueueFamilyIndexVK(const Queue& queue) {
     return ((QueueVK&)queue).GetFamilyIndex();
 }
@@ -1479,6 +1507,13 @@ Result DeviceVK::FillFunctionTable(WrapperVKInterface& table) const {
     table.GetInstanceVK = ::GetInstanceVK;
     table.GetDeviceProcAddrVK = ::GetDeviceProcAddrVK;
     table.GetInstanceProcAddrVK = ::GetInstanceProcAddrVK;
+    table.RetireSwapChainVK = ::RetireSwapChainVK;
+    table.GetFenceValueCheckedVK = ::GetFenceValueCheckedVK;
+    table.BeginReusableCommandBufferVK = ::BeginReusableCommandBufferVK;
+    table.WaitFenceCheckedVK = ::WaitFenceCheckedVK;
+    table.ResetCommandAllocatorCheckedVK = ::ResetCommandAllocatorCheckedVK;
+    table.FlushBufferRangeVK = ::FlushBufferRangeVK;
+    table.InvalidateBufferRangeVK = ::InvalidateBufferRangeVK;
 
     return Result::SUCCESS;
 }

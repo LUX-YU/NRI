@@ -344,3 +344,22 @@ NRI_INLINE void BufferVK::Unmap() {
     if (m_NonCoherentDeviceMemory)
         FlushMappedRange(m_MappedMemoryRangeOffset, m_MappedMemoryRangeSize);
 }
+
+NRI_INLINE Result BufferVK::SynchronizeMappedRange(uint64_t offset, uint64_t size, bool invalidate) {
+    if (!m_MappedMemory || offset > m_Desc.size)
+        return Result::INVALID_ARGUMENT;
+    if (size == WHOLE_SIZE)
+        size = m_Desc.size - offset;
+    if (size > m_Desc.size - offset)
+        return Result::INVALID_ARGUMENT;
+    if (!size)
+        return Result::SUCCESS;
+    if (m_VmaAllocation) {
+        // VMA accounts for the allocation's offset, atom alignment and memory bounds.
+        const VkResult result = invalidate
+            ? vmaInvalidateAllocation(m_Device.GetVma(), m_VmaAllocation, offset, size)
+            : vmaFlushAllocation(m_Device.GetVma(), m_VmaAllocation, offset, size);
+        return GetResultFromVkResult(result);
+    }
+    return m_NonCoherentDeviceMemory ? Result::UNSUPPORTED : Result::SUCCESS;
+}

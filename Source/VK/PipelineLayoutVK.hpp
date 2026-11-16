@@ -110,7 +110,9 @@ Result PipelineLayoutVK::Create(const PipelineLayoutDesc& pipelineLayoutDesc) {
 
         // Create "non-push" set layout
         VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
-        CreateSetLayout(&descriptorSetLayout, descriptorSetDesc, nullptr, 0, ignoreGlobalSPIRVOffsets, false);
+        const Result layoutResult = CreateSetLayout(&descriptorSetLayout, descriptorSetDesc, nullptr, 0, ignoreGlobalSPIRVOffsets, false);
+        if (layoutResult != Result::SUCCESS)
+            return layoutResult;
 
         m_DescriptorSetLayouts.push_back(descriptorSetLayout);
         setNum = std::max(setNum, descriptorSetDesc.registerSpace);
@@ -180,7 +182,9 @@ Result PipelineLayoutVK::Create(const PipelineLayoutDesc& pipelineLayoutDesc) {
 
         // Create "push" set layout
         VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
-        CreateSetLayout(&descriptorSetLayout, rootSet, pipelineLayoutDesc.rootSamplers, pipelineLayoutDesc.rootSamplerNum, ignoreGlobalSPIRVOffsets, true);
+        const Result layoutResult = CreateSetLayout(&descriptorSetLayout, rootSet, pipelineLayoutDesc.rootSamplers, pipelineLayoutDesc.rootSamplerNum, ignoreGlobalSPIRVOffsets, true);
+        if (layoutResult != Result::SUCCESS)
+            return layoutResult;
 
         m_DescriptorSetLayouts.push_back(descriptorSetLayout);
         setNum = std::max(setNum, pipelineLayoutDesc.rootRegisterSpace);
@@ -194,7 +198,9 @@ Result PipelineLayoutVK::Create(const PipelineLayoutDesc& pipelineLayoutDesc) {
     if (hasGaps) {
         // Create a "dummy" set layout
         VkDescriptorSetLayout dummyDescriptorSetLayout = VK_NULL_HANDLE;
-        CreateSetLayout(&dummyDescriptorSetLayout, {}, nullptr, 0, ignoreGlobalSPIRVOffsets, false);
+        const Result layoutResult = CreateSetLayout(&dummyDescriptorSetLayout, {}, nullptr, 0, ignoreGlobalSPIRVOffsets, false);
+        if (layoutResult != Result::SUCCESS)
+            return layoutResult;
 
         m_DescriptorSetLayouts.push_back(dummyDescriptorSetLayout);
 
@@ -306,7 +312,7 @@ uint32_t PipelineLayoutVK::SetupDescriptorHeapMappings(VkShaderStageFlagBits sta
     return mappingNum;
 }
 
-void PipelineLayoutVK::CreateSetLayout(VkDescriptorSetLayout* setLayout, const DescriptorSetDesc& descriptorSetDesc, const RootSamplerDesc* rootSamplers, uint32_t rootSamplerNum, bool ignoreGlobalSPIRVOffsets, bool isPush) {
+Result PipelineLayoutVK::CreateSetLayout(VkDescriptorSetLayout* setLayout, const DescriptorSetDesc& descriptorSetDesc, const RootSamplerDesc* rootSamplers, uint32_t rootSamplerNum, bool ignoreGlobalSPIRVOffsets, bool isPush) {
     const DeviceDesc& deviceDesc = m_Device.GetDesc();
 
     // Binding offsets
@@ -401,7 +407,7 @@ void PipelineLayoutVK::CreateSetLayout(VkDescriptorSetLayout* setLayout, const D
 
         const auto& vk = m_Device.GetDispatchTable();
         VkResult vkResult = vk.CreateSampler(m_Device, &info, m_Device.GetVkAllocationCallbacks(), &immutableSamplers[i]);
-        NRI_RETURN_VOID_ON_BAD_VKRESULT(&m_Device, vkResult, "vkCreateSampler");
+        NRI_RETURN_ON_BAD_VKRESULT(&m_Device, vkResult, "vkCreateSampler");
 
         m_ImmutableSamplers.push_back(immutableSamplers[i]);
 
@@ -440,7 +446,9 @@ void PipelineLayoutVK::CreateSetLayout(VkDescriptorSetLayout* setLayout, const D
 
     const auto& vk = m_Device.GetDispatchTable();
     VkResult vkResult = vk.CreateDescriptorSetLayout(m_Device, &info, m_Device.GetVkAllocationCallbacks(), setLayout);
-    NRI_RETURN_VOID_ON_BAD_VKRESULT(&m_Device, vkResult, "vkCreateDescriptorSetLayout");
+    NRI_RETURN_ON_BAD_VKRESULT(&m_Device, vkResult, "vkCreateDescriptorSetLayout");
+
+    return Result::SUCCESS;
 }
 
 NRI_INLINE void PipelineLayoutVK::SetDebugName(const char* name) {

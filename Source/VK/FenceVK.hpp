@@ -71,3 +71,23 @@ NRI_INLINE Result FenceVK::Wait(uint64_t value) {
 
     return Result::SUCCESS;
 }
+
+NRI_INLINE Result FenceVK::GetFenceValueChecked(uint64_t& value) const {
+    value = 0;
+    const auto& vk = m_Device.GetDispatchTable();
+    return GetResultFromVkResult(vk.GetSemaphoreCounterValue((VkDevice)m_Device, m_Handle, &value));
+}
+
+NRI_INLINE Result FenceVK::WaitChecked(uint64_t value, uint64_t timeoutNs, bool& completed) {
+    completed = false;
+    VkSemaphoreWaitInfo info = {VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO};
+    info.semaphoreCount = 1;
+    info.pSemaphores = &m_Handle;
+    info.pValues = &value;
+    const auto& vk = m_Device.GetDispatchTable();
+    const VkResult result = vk.WaitSemaphores((VkDevice)m_Device, &info, timeoutNs);
+    if (result == VK_TIMEOUT)
+        return Result::SUCCESS;
+    completed = result == VK_SUCCESS;
+    return GetResultFromVkResult(result);
+}
